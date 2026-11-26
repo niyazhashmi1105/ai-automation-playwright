@@ -77,7 +77,7 @@ CLAUDE.md              rules for AI agents
 ```bash
 npm ci
 npx playwright install --with-deps chromium
-cp .env.example .env          # then set WEB_PASSWORD
+cp .env.example .env          # optional: demo password already in config/env/
 npm run typecheck
 npm test                      # everything
 ```
@@ -136,7 +136,7 @@ Repository secrets to add (Settings → Secrets and variables → Actions):
 
 | Secret | Required | Used for |
 |---|---|---|
-| `WEB_PASSWORD` | yes (web tests) | UI login in `auth.setup.ts` |
+| `WEB_PASSWORD` | no (demo default in `config/env/.env.<env>`) | Overrides the UI login password; required for a real app |
 | `API_TOKEN` | no | Sent as `Authorization: Bearer` when set |
 
 ## How to extend

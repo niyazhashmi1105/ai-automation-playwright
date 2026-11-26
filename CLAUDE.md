@@ -8,7 +8,7 @@ Read this before writing, generating or healing any test.
 - `npm run typecheck` — must pass with zero errors before you finish.
 - `npx playwright test --list` — confirm discovery.
 - `npm run test:web` / `npm run test:api` / `npm run test:smoke`.
-- Web tests need `WEB_PASSWORD` in `.env` (see `.env.example`).
+- Web login uses `WEB_PASSWORD`. Demo default lives in `config/env/.env.<env>` (public saucedemo password); env var or repo secret overrides it.
 
 ## Layout
 
@@ -33,6 +33,7 @@ Read this before writing, generating or healing any test.
    Locators live in page objects/components only.
 5. All test data comes from JSON (data fixtures or `readJson`). Secrets only from env
    (`{{env:WEB_PASSWORD}}` placeholder). Never commit secrets, `.env` or `.auth/`.
+   Only exception: the public saucedemo demo password in `config/env/` (not a real secret).
 6. Every test has tags: one of `@smoke`/`@regression` plus `@web`/`@api`/`@e2e`
    via `test('title', { tag: [...] }, ...)`. Tests are independent and parallel-safe:
    no shared mutable state, no order dependence.

@@ -10,6 +10,13 @@ import dotenv from 'dotenv';
  */
 const ROOT = path.resolve(__dirname, '..');
 
+// CI maps missing secrets to empty strings (e.g. WEB_PASSWORD: ${{ secrets.X }}).
+// dotenv never overrides an existing key, so drop empty values first and let
+// .env / config/env defaults fill them.
+for (const key of ['WEB_BASE_URL', 'API_BASE_URL', 'WEB_USERNAME', 'WEB_PASSWORD', 'API_TOKEN', 'TEST_ENV', 'LOG_LEVEL']) {
+  if (process.env[key] === '') delete process.env[key];
+}
+
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
 export const TEST_ENVS = ['qa', 'staging'] as const;
