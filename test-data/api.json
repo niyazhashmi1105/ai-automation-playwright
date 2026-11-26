@@ -1,0 +1,15 @@
+{
+  "newPost": { "userId": 1, "title": "E2E post {{uniqueId}}", "body": "Created by the automation suite." },
+  "updatedPost": { "id": 1, "userId": 1, "title": "Replaced title", "body": "Replaced body." },
+  "patch": { "title": "Patched title" },
+  "existingPostId": 1,
+  "missingPostId": 999999,
+  "existingUserId": 1,
+  "missingUserId": 999999,
+  "postFilters": [
+    { "title": "filter by userId=1", "query": { "userId": 1 }, "expectedCount": 10, "field": "userId", "expectedValue": 1 },
+    { "title": "filter by userId=10", "query": { "userId": 10 }, "expectedCount": 10, "field": "userId", "expectedValue": 10 },
+    { "title": "filter by id=5", "query": { "id": 5 }, "expectedCount": 1, "field": "id", "expectedValue": 5 },
+    { "title": "unknown userId returns empty list", "query": { "userId": 9999 }, "expectedCount": 0, "field": "userId", "expectedValue": 9999 }
+  ]
+}

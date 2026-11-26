@@ -1,0 +1,166 @@
+name: Playwright E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *' # nightly 02:00 UTC — full regression
+  workflow_dispatch:
+    inputs:
+      test_env:
+        description: Target environment
+        type: choice
+        options: [qa, staging]
+        default: qa
+      grep:
+        description: 'Tag filter, e.g. @smoke or @regression (empty = all)'
+        type: string
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: 'true'
+  TEST_ENV: ${{ inputs.test_env || 'qa' }}
+  # PRs run @smoke only; manual runs use the input; push/nightly run everything.
+  GREP: ${{ github.event_name == 'pull_request' && '@smoke' || inputs.grep || '' }}
+  WEB_PASSWORD: ${{ secrets.WEB_PASSWORD }}
+  API_TOKEN: ${{ secrets.API_TOKEN }}
+
+jobs:
+  static-checks:
+    name: Static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Discover tests
+        run: npx playwright test --list > /dev/null
+
+  api-tests:
+    name: API tests
+    needs: static-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run API tests
+        run: |
+          ARGS=(--project=api)
+          if [ -n "$GREP" ]; then ARGS+=(--grep "$GREP" --pass-with-no-tests); fi
+          npx playwright test "${ARGS[@]}"
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-api
+          path: blob-report
+          retention-days: 3
+      - name: Upload JUnit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-api
+          path: junit
+          retention-days: 7
+
+  web-tests:
+    name: Web tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: static-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Get Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache browsers
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Install browsers
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install OS deps (cache hit)
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Run web tests
+        run: |
+          ARGS=(--project=web-chromium --shard=${{ matrix.shard }}/${{ strategy.job-total }})
+          if [ -n "$GREP" ]; then ARGS+=(--grep "$GREP" --pass-with-no-tests); fi
+          npx playwright test "${ARGS[@]}"
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-web-${{ matrix.shard }}
+          path: blob-report
+          retention-days: 3
+      - name: Upload JUnit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-web-${{ matrix.shard }}
+          path: junit
+          retention-days: 7
+
+  merge-reports:
+    name: Merge reports
+    needs: [api-tests, web-tests]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+      - name: Merge into HTML + JSON
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+        run: npx playwright merge-reports --reporter html,json ./all-blob-reports
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_attempt }}
+          path: playwright-report
+          retention-days: 14
+      - name: Job summary
+        run: node scripts/report-summary.js results.json >> "$GITHUB_STEP_SUMMARY"

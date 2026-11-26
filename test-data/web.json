@@ -1,0 +1,60 @@
+{
+  "users": {
+    "standard": { "username": "{{env:WEB_USERNAME}}", "password": "{{env:WEB_PASSWORD}}" },
+    "locked": { "username": "locked_out_user", "password": "{{env:WEB_PASSWORD}}" }
+  },
+  "invalidLogins": [
+    {
+      "title": "locked-out user is rejected",
+      "username": "locked_out_user",
+      "password": "{{env:WEB_PASSWORD}}",
+      "expectedError": "Sorry, this user has been locked out."
+    },
+    {
+      "title": "wrong password is rejected",
+      "username": "standard_user",
+      "password": "not-the-password",
+      "expectedError": "Username and password do not match any user in this service"
+    },
+    {
+      "title": "unknown user is rejected",
+      "username": "ghost_user_{{uniqueId}}",
+      "password": "whatever",
+      "expectedError": "Username and password do not match any user in this service"
+    },
+    {
+      "title": "empty username is required",
+      "username": "",
+      "password": "whatever",
+      "expectedError": "Username is required"
+    },
+    {
+      "title": "empty password is required",
+      "username": "standard_user",
+      "password": "",
+      "expectedError": "Password is required"
+    }
+  ],
+  "checkout": { "firstName": "{{firstName}}", "lastName": "{{lastName}}", "postalCode": "{{postalCode}}" },
+  "checkoutValidation": [
+    { "title": "first name missing", "firstName": "", "lastName": "Lee", "postalCode": "12345", "expectedError": "First Name is required" },
+    { "title": "last name missing", "firstName": "Alex", "lastName": "", "postalCode": "12345", "expectedError": "Last Name is required" },
+    { "title": "postal code missing", "firstName": "Alex", "lastName": "Lee", "postalCode": "", "expectedError": "Postal Code is required" },
+    { "title": "all fields missing", "firstName": "", "lastName": "", "postalCode": "", "expectedError": "First Name is required" }
+  ],
+  "products": {
+    "journey": [
+      { "name": "Sauce Labs Backpack", "price": 29.99 },
+      { "name": "Sauce Labs Bike Light", "price": 9.99 },
+      { "name": "Sauce Labs Fleece Jacket", "price": 49.99 }
+    ],
+    "single": { "name": "Sauce Labs Onesie", "price": 7.99 }
+  },
+  "sortCases": [
+    { "title": "name A to Z", "option": "az", "by": "name", "direction": "asc" },
+    { "title": "name Z to A", "option": "za", "by": "name", "direction": "desc" },
+    { "title": "price low to high", "option": "lohi", "by": "price", "direction": "asc" },
+    { "title": "price high to low", "option": "hilo", "by": "price", "direction": "desc" }
+  ],
+  "taxRate": 0.08
+}
