@@ -159,7 +159,10 @@ Agents never approve or merge. Merge needs the `AI review` check **and** a human
 
 **One-time GitHub setup**
 1. Install the Claude GitHub App: https://github.com/apps/claude (or `/install-github-app` in
-   Claude Code), grant it this repository, and add repo secret `ANTHROPIC_API_KEY`.
+   Claude Code), grant it this repository, and add repo secret `CLAUDE_CODE_OAUTH_TOKEN`
+   (run `claude setup-token` with a Pro/Max account; uses subscription limits, no per-token bill).
+   To use pay-per-token API billing instead, set `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`
+   in both workflows.
 2. Branch protection on `main`: require PR with **1 approval**; **dismiss stale approvals when new
    commits are pushed**; require review from Code Owners; require conversation resolution;
    required checks `AI review`, `Static checks`, `API tests`, `Web tests (shard 1/2)`,
