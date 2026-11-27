@@ -41,6 +41,27 @@ test.describe('Checkout', () => {
     },
   );
 
+  test(
+    'back home after order returns to inventory with empty cart',
+    { tag: ['@regression', '@web'] },
+    async ({ inventoryPage, cartPage, checkoutInfoPage, checkoutOverviewPage, checkoutCompletePage, webData }) => {
+      await inventoryPage.open();
+      await inventoryPage.addToCart(webData.products.single.name);
+      await inventoryPage.header.openCart();
+      await cartPage.expectOnPage();
+      await cartPage.checkout();
+      await checkoutInfoPage.expectOnPage();
+      await checkoutInfoPage.submit(webData.checkout);
+      await checkoutOverviewPage.expectOnPage();
+      await checkoutOverviewPage.finish();
+      await checkoutCompletePage.expectOnPage();
+
+      await checkoutCompletePage.backHome();
+      await inventoryPage.expectOnPage();
+      await inventoryPage.header.expectCartCount(0);
+    },
+  );
+
   test.describe('information form validation', () => {
     test.beforeEach(async ({ inventoryPage, cartPage, checkoutInfoPage, webData }) => {
       await inventoryPage.open();
