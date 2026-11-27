@@ -27,6 +27,21 @@ test.describe('Cart', () => {
     await cartPage.header.expectCartCount(0);
   });
 
+  test('continue shopping keeps the cart', { tag: ['@regression', '@web'] }, async ({ inventoryPage, cartPage, webData }) => {
+    const { name } = webData.products.single;
+    await inventoryPage.addToCart(name);
+    await inventoryPage.header.openCart();
+    await cartPage.expectOnPage();
+
+    await cartPage.continueShopping();
+    await inventoryPage.expectOnPage();
+    await inventoryPage.header.expectCartCount(1);
+
+    await inventoryPage.header.openCart();
+    await cartPage.expectOnPage();
+    expect(await cartPage.itemNames()).toEqual([name]);
+  });
+
   test('add from product details', { tag: ['@regression', '@web'] }, async ({ inventoryPage, productDetailsPage, webData }) => {
     await inventoryPage.openProduct(webData.products.single.name);
     await productDetailsPage.expectOnPage();
