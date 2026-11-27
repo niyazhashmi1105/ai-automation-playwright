@@ -2,8 +2,8 @@ name: PR Comment Fix Agent
 
 # When a human reviewer with write access submits a review (changes requested, or comments)
 # on a feature/* PR, Claude incorporates the feedback, runs the gates, pushes a commit and
-# replies to each comment. The push triggers PR Review Agent again, which re-reviews and,
-# if it passes, re-enables auto-merge.
+# replies to each comment. The push triggers PR Review Agent again, which re-reviews.
+# The agent never merges: a human approves and merges after re-review.
 
 on:
   pull_request_review:
@@ -34,10 +34,10 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       REVIEW_ID: ${{ github.event.review.id }}
     steps:
-      - name: Hold auto-merge until re-review
+      - name: Clear AI approval until re-review
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
-        run: gh pr merge "$PR_NUMBER" --disable-auto --repo "$GITHUB_REPOSITORY" || true
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr edit "$PR_NUMBER" --remove-label ai-approved --repo "$GITHUB_REPOSITORY" || true
 
       - uses: actions/checkout@v4
         with:

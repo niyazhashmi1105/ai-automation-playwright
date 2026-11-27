@@ -1,8 +1,9 @@
 name: PR Review Agent
 
 # Reviews every PR from a feature/* branch into main. Runs again on every new push
-# (including pushes made by the comment-fix agent). When the review passes it enables
-# GitHub auto-merge; GitHub merges once every required check is green.
+# (including pushes made by the comment-fix agent). Human in the loop: the agent never
+# merges. A pass labels the PR `ai-approved`; a human reviewer approves and merges.
+# Branch protection requires the `AI review` check AND a human approval.
 
 on:
   pull_request:
@@ -87,15 +88,21 @@ jobs:
             if (!ok) { console.error("Review not passed: " + (v.summary || v.verdict)); process.exit(1); }
           '
 
-      - name: Enable auto-merge
+      - name: Label ready for human review
         if: success()
         env:
-          # A PAT or GitHub App token makes the merge trigger push workflows on main.
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
-        run: gh pr merge "$PR_NUMBER" --auto --squash --delete-branch --repo "$GITHUB_REPOSITORY"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create ai-approved --color 0E8A16 --description "PR review agent passed; awaiting human approval" --force
+          gh label create ai-changes-requested --color D93F0B --description "PR review agent found blocking issues" --force
+          gh pr edit "$PR_NUMBER" --add-label ai-approved --remove-label ai-changes-requested
+          echo "✅ AI review passed. Waiting for a human reviewer to approve and merge." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Disable auto-merge
+      - name: Label changes requested
         if: failure()
         env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
-        run: gh pr merge "$PR_NUMBER" --disable-auto --repo "$GITHUB_REPOSITORY" || true
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create ai-approved --color 0E8A16 --description "PR review agent passed; awaiting human approval" --force
+          gh label create ai-changes-requested --color D93F0B --description "PR review agent found blocking issues" --force
+          gh pr edit "$PR_NUMBER" --add-label ai-changes-requested --remove-label ai-approved || true

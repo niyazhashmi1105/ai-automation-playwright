@@ -137,17 +137,19 @@ Useful env flags: `TEST_ENV=staging`, `EXTRA_BROWSERS=true` (adds Firefox + Pixe
 
 Review generated code like any other PR: run `npm run typecheck` and the suite.
 
-## PR review agent and auto-merge
+## PR review agent (human in the loop)
 
 ```
 feature/* PR ─▶ PR Review Agent (pr-review.yml)
                  gates: typecheck · framework rules · coverage · discovery
                  Claude review vs CLAUDE.md ─▶ inline + summary comments, verdict
-                   ├─ REQUEST_CHANGES ─▶ check fails, auto-merge off ─▶ author pushes fix ─┐
-                   └─ APPROVE ─▶ auto-merge (squash) when all required checks are green    │
-reviewer comments ─▶ PR Comment Fix Agent (pr-address-comments.yml)                        │
-                 holds auto-merge, edits code, runs `npm run verify`, pushes, replies ─────┘ (re-review)
+                   ├─ REQUEST_CHANGES ─▶ check fails, label ai-changes-requested ─▶ author fixes ─┐
+                   └─ APPROVE ─▶ check passes, label ai-approved ─▶ HUMAN approves + merges      │
+human review comments ─▶ PR Comment Fix Agent (pr-address-comments.yml)                          │
+                 removes ai-approved, edits code, `npm run verify`, pushes, replies ─────────────┘ (re-review)
 ```
+
+Agents never approve or merge. Merge needs the `AI review` check **and** a human approval.
 
 - Gates locally: `npm run verify`. Review locally: "Use the pr-reviewer agent on my branch".
 - Coverage gate (`scripts/check-coverage.js`): every test tagged; public page/component/client
@@ -156,14 +158,12 @@ reviewer comments ─▶ PR Comment Fix Agent (pr-address-comments.yml)         
   `waitForTimeout`, XPath, `.only`, hard-coded secrets, `BasePage`).
 
 **One-time GitHub setup**
-1. Install the Claude GitHub App (`/install-github-app` in Claude Code) and add secret
-   `ANTHROPIC_API_KEY`. Its pushes re-trigger the review.
-2. Settings → General → allow auto-merge.
-3. Branch protection on `main`: require PR; required checks `AI review`, `Static checks`,
-   `API tests`, `Web tests (shard 1/2)`, `Web tests (shard 2/2)`; require conversation resolution;
-   require review from Code Owners (`.github/CODEOWNERS`).
-4. Optional secret `MERGE_TOKEN` (fine-grained PAT or App token, contents + pull requests write)
-   so the merge commit triggers workflows on `main`.
+1. Install the Claude GitHub App: https://github.com/apps/claude (or `/install-github-app` in
+   Claude Code), grant it this repository, and add repo secret `ANTHROPIC_API_KEY`.
+2. Branch protection on `main`: require PR with **1 approval**; **dismiss stale approvals when new
+   commits are pushed**; require review from Code Owners; require conversation resolution;
+   required checks `AI review`, `Static checks`, `API tests`, `Web tests (shard 1/2)`,
+   `Web tests (shard 2/2)`.
 
 ## CI (GitHub Actions)
 

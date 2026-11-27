@@ -73,8 +73,8 @@ Read this before writing, generating or healing any test.
 ## PR review and merge
 
 - PRs from `feature/*` into `main` are reviewed by `.claude/agents/pr-reviewer.md`
-  (`.github/workflows/pr-review.yml`). Pass = gates green + zero blocking findings → auto-merge
-  (squash) once all required checks pass.
+  (`.github/workflows/pr-review.yml`). Pass = gates green + zero blocking findings → label
+  `ai-approved`. Human in the loop: agents never approve or merge; a human reviewer approves and merges.
 - Human review comments are incorporated by `.github/workflows/pr-address-comments.yml`, which pushes
   a fix commit; the review agent then re-reviews.
 - Changes to `.github/`, `.claude/`, `scripts/check-*.js`, `CLAUDE.md`, `.mcp.json` always need a
