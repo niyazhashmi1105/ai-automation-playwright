@@ -1,0 +1,101 @@
+name: PR Review Agent
+
+# Reviews every PR from a feature/* branch into main. Runs again on every new push
+# (including pushes made by the comment-fix agent). When the review passes it enables
+# GitHub auto-merge; GitHub merges once every required check is green.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  ai-review:
+    name: AI review
+    # Same-repo feature branches only (fork PRs get no secrets), skip drafts.
+    if: >-
+      github.event.pull_request.draft == false &&
+      startsWith(github.head_ref, 'feature/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Quality gates
+        id: gates
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            echo "## typecheck";  npm run typecheck &&
+            echo "## rules";      npm run lint:rules &&
+            echo "## coverage";   node scripts/check-coverage.js --base "origin/$BASE_REF" &&
+            echo "## discovery";  npx playwright test --list > /dev/null && echo "discovery OK"
+          } 2>&1 | tee gate-output.txt
+
+      - name: Review with Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            BASE BRANCH: ${{ github.base_ref }}
+            GATES OUTCOME: ${{ steps.gates.outcome }}
+
+            You are the PR review agent. Follow `.claude/agents/pr-reviewer.md` exactly
+            (read it and CLAUDE.md first). Gate output is in `gate-output.txt`.
+            Post inline comments for blocking findings, one summary comment, and write
+            `review-verdict.json`. Never edit source files.
+          claude_args: >-
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*),mcp__github_inline_comment__create_inline_comment"
+
+      - name: Enforce verdict
+        env:
+          GATES: ${{ steps.gates.outcome }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            if (!fs.existsSync("review-verdict.json")) { console.error("No review-verdict.json written"); process.exit(1); }
+            const v = JSON.parse(fs.readFileSync("review-verdict.json", "utf8"));
+            console.log(JSON.stringify(v, null, 2));
+            const ok = process.env.GATES === "success" && v.verdict === "APPROVE" && v.blocking === 0;
+            if (!ok) { console.error("Review not passed: " + (v.summary || v.verdict)); process.exit(1); }
+          '
+
+      - name: Enable auto-merge
+        if: success()
+        env:
+          # A PAT or GitHub App token makes the merge trigger push workflows on main.
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
+        run: gh pr merge "$PR_NUMBER" --auto --squash --delete-branch --repo "$GITHUB_REPOSITORY"
+
+      - name: Disable auto-merge
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN || github.token }}
+        run: gh pr merge "$PR_NUMBER" --disable-auto --repo "$GITHUB_REPOSITORY" || true

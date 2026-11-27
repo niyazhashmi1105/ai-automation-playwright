@@ -1,0 +1,8 @@
+# Changes to CI, agents, review gates and agent rules need a human code-owner review.
+# Enable "Require review from Code Owners" in branch protection for main.
+/.github/                  @niyazhashmi1105
+/.claude/                  @niyazhashmi1105
+/scripts/check-rules.js    @niyazhashmi1105
+/scripts/check-coverage.js @niyazhashmi1105
+/CLAUDE.md                 @niyazhashmi1105
+/.mcp.json                 @niyazhashmi1105

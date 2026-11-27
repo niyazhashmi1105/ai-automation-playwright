@@ -41,12 +41,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # coverage gate diffs against the PR base
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - name: Framework rules (CLAUDE.md)
+        run: npm run lint:rules
+      - name: Coverage gate
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            node scripts/check-coverage.js --base "origin/${{ github.base_ref }}"
+          else
+            node scripts/check-coverage.js --base HEAD # tags enforced; old unused methods only warn
+          fi
       - name: Discover tests
         run: npx playwright test --list > /dev/null
 

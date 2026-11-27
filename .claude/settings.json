@@ -1,0 +1,28 @@
+{
+  "enabledMcpjsonServers": ["playwright-test", "atlassian", "azure-devops"],
+  "permissions": {
+    "deny": [
+      "mcp__atlassian__createJiraIssue",
+      "mcp__atlassian__editJiraIssue",
+      "mcp__atlassian__transitionJiraIssue",
+      "mcp__atlassian__addCommentToJiraIssue",
+      "mcp__atlassian__addWorklogToJiraIssue",
+      "mcp__atlassian__createIssueLink",
+      "mcp__atlassian__createConfluencePage",
+      "mcp__atlassian__updateConfluencePage",
+      "mcp__atlassian__createConfluenceFooterComment",
+      "mcp__atlassian__createConfluenceInlineComment",
+      "mcp__azure-devops__wit_create_work_item",
+      "mcp__azure-devops__wit_update_work_item",
+      "mcp__azure-devops__wit_update_work_items_batch",
+      "mcp__azure-devops__wit_add_work_item_comment",
+      "mcp__azure-devops__wit_add_child_work_items",
+      "mcp__azure-devops__wit_work_items_link",
+      "mcp__azure-devops__wit_work_item_unlink",
+      "mcp__azure-devops__wit_add_artifact_link",
+      "mcp__azure-devops__wit_link_work_item_to_pull_request",
+      "mcp__azure-devops__work_create_iterations",
+      "mcp__azure-devops__work_assign_iterations"
+    ]
+  }
+}

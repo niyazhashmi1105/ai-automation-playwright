@@ -7,3 +7,5 @@ blob-report/
 junit/
 *.log
 .DS_Store
+review-verdict.json
+gate-output.txt
