@@ -1,0 +1,161 @@
+# Azure Pipelines: Playwright + TypeScript E2E framework.
+# Same flow as .github/workflows/playwright.yml:
+#   static checks -> API tests + web tests (2 parallel shards) -> merged HTML report.
+#
+# Secrets (optional): define pipeline variables WEB_PASSWORD and API_TOKEN as secret in the
+# pipeline UI (Edit -> Variables). If they are not defined, config/env defaults are used
+# (public saucedemo demo password); config/env.ts ignores the unexpanded "$(NAME)" text.
+
+trigger:
+  branches:
+    include: [main]
+
+pr:
+  branches:
+    include: [main]
+
+schedules:
+  - cron: '0 2 * * *' # nightly 02:00 UTC, full regression
+    displayName: Nightly regression
+    branches:
+      include: [main]
+    always: true
+
+parameters:
+  - name: testEnv
+    displayName: Target environment
+    type: string
+    default: qa
+    values: [qa, staging]
+  - name: grep
+    displayName: 'Tag filter, e.g. @smoke or @regression (empty = all)'
+    type: string
+    default: ' ' # Azure needs a non-empty default; trimmed below
+
+variables:
+  CI: 'true'
+  TEST_ENV: ${{ parameters.testEnv }}
+  NODE_VERSION: '20.x'
+  PLAYWRIGHT_BROWSERS_PATH: $(Pipeline.Workspace)/ms-playwright
+  npm_config_cache: $(Pipeline.Workspace)/.npm
+  # PRs run @smoke only; manual runs use the parameter; CI/nightly run everything.
+  ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+    GREP: '@smoke'
+  ${{ else }}:
+    GREP: ${{ trim(parameters.grep) }}
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: test
+    displayName: E2E tests
+    jobs:
+      - job: static_checks
+        displayName: Static checks
+        timeoutInMinutes: 10
+        steps:
+          - checkout: self
+            fetchDepth: 0 # coverage gate diffs against main
+          - template: .azure/steps/setup-node.yml
+          - script: npm run typecheck
+            displayName: Typecheck
+          - script: npm run lint:rules
+            displayName: Framework rules (CLAUDE.md)
+          - script: |
+              set -e
+              if [ "$(Build.Reason)" = "PullRequest" ]; then
+                TARGET="$(System.PullRequest.TargetBranch)"
+                TARGET="${TARGET#refs/heads/}"
+                git fetch --no-tags origin "$TARGET"
+                node scripts/check-coverage.js --base "origin/$TARGET"
+              else
+                node scripts/check-coverage.js --base HEAD # tags enforced; old unused methods only warn
+              fi
+            displayName: Coverage gate
+          - script: npx playwright test --list > /dev/null
+            displayName: Discover tests
+
+      - job: api_tests
+        displayName: API tests
+        dependsOn: static_checks
+        timeoutInMinutes: 15
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - template: .azure/steps/setup-node.yml
+          - script: |
+              ARGS=(--project=api)
+              if [ -n "$GREP" ]; then ARGS+=(--grep "$GREP" --pass-with-no-tests); fi
+              npx playwright test "${ARGS[@]}"
+            displayName: Run API tests
+            env:
+              WEB_PASSWORD: $(WEB_PASSWORD)
+              API_TOKEN: $(API_TOKEN)
+          - template: .azure/steps/publish-results.yml
+            parameters:
+              name: api
+
+      - job: web_tests
+        displayName: Web tests
+        dependsOn: static_checks
+        timeoutInMinutes: 30
+        strategy:
+          parallel: 2 # shards; System.JobPositionInPhase / System.TotalJobsInPhase
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - template: .azure/steps/setup-node.yml
+          - task: Cache@2
+            displayName: Cache Playwright browsers
+            inputs:
+              key: 'playwright | "$(Agent.OS)" | package-lock.json'
+              path: $(PLAYWRIGHT_BROWSERS_PATH)
+              cacheHitVar: BROWSERS_CACHED
+          - script: npx playwright install --with-deps chromium
+            displayName: Install browsers
+            condition: ne(variables.BROWSERS_CACHED, 'true')
+          - script: npx playwright install-deps chromium
+            displayName: Install OS deps (cache hit)
+            condition: eq(variables.BROWSERS_CACHED, 'true')
+          - script: |
+              ARGS=(--project=web-chromium --shard=$(System.JobPositionInPhase)/$(System.TotalJobsInPhase))
+              if [ -n "$GREP" ]; then ARGS+=(--grep "$GREP" --pass-with-no-tests); fi
+              npx playwright test "${ARGS[@]}"
+            displayName: Run web tests (shard $(System.JobPositionInPhase)/$(System.TotalJobsInPhase))
+            env:
+              WEB_PASSWORD: $(WEB_PASSWORD)
+              API_TOKEN: $(API_TOKEN)
+          - template: .azure/steps/publish-results.yml
+            parameters:
+              name: web-$(System.JobPositionInPhase)
+
+      - job: merge_reports
+        displayName: Merge reports
+        dependsOn: [api_tests, web_tests]
+        condition: succeededOrFailed()
+        timeoutInMinutes: 10
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - template: .azure/steps/setup-node.yml
+          - task: DownloadPipelineArtifact@2
+            displayName: Download blob reports
+            inputs:
+              buildType: current
+              itemPattern: 'blob-report-*/**'
+              targetPath: $(Pipeline.Workspace)/blobs
+          - script: |
+              set -e
+              mkdir -p all-blob-reports
+              find "$(Pipeline.Workspace)/blobs" -name '*.zip' -exec cp {} all-blob-reports/ \;
+              ls -1 all-blob-reports
+              PLAYWRIGHT_JSON_OUTPUT_NAME=results.json npx playwright merge-reports --reporter html,json ./all-blob-reports
+              node scripts/report-summary.js results.json > "$(Agent.TempDirectory)/summary.md"
+              echo "##vso[task.uploadsummary]$(Agent.TempDirectory)/summary.md"
+            displayName: Merge into HTML + JSON
+          - task: PublishPipelineArtifact@1
+            displayName: Publish HTML report
+            inputs:
+              targetPath: playwright-report
+              artifact: playwright-report-$(System.JobAttempt)
