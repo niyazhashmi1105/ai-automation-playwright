@@ -18,6 +18,9 @@
     "report": "playwright show-report",
     "codegen": "playwright codegen https://www.saucedemo.com",
     "typecheck": "tsc --noEmit",
+    "lint:rules": "node scripts/check-rules.js",
+    "coverage:check": "node scripts/check-coverage.js --base origin/main",
+    "verify": "npm run typecheck && npm run lint:rules && npm run coverage:check",
     "agents:init": "playwright init-agents --loop=claude"
   },
   "devDependencies": {

@@ -1,0 +1,113 @@
+name: PR Review Agent
+
+# Reviews every PR from a feature/* branch into main. Runs again on every new push
+# (including pushes made by the comment-fix agent). Human in the loop: the agent never
+# merges. A pass labels the PR `ai-approved`; a human reviewer approves and merges.
+# Branch protection requires the `AI review` check AND a human approval.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  ai-review:
+    name: AI review
+    # Same-repo feature branches only (fork PRs get no secrets), skip drafts.
+    if: >-
+      github.event.pull_request.draft == false &&
+      startsWith(github.head_ref, 'feature/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Quality gates
+        id: gates
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            echo "## typecheck";  npm run typecheck &&
+            echo "## rules";      npm run lint:rules &&
+            echo "## coverage";   node scripts/check-coverage.js --base "origin/$BASE_REF" &&
+            echo "## discovery";  npx playwright test --list > /dev/null && echo "discovery OK"
+          } 2>&1 | tee gate-output.txt
+
+      - name: Review with Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            BASE BRANCH: ${{ github.base_ref }}
+            GATES OUTCOME: ${{ steps.gates.outcome }}
+
+            You are the PR review agent. Follow `.claude/agents/pr-reviewer.md` exactly
+            (read it and CLAUDE.md first). Gate output is in `gate-output.txt`.
+            Post inline comments for blocking findings, one summary comment, and write
+            `review-verdict.json`. Never edit source files.
+          claude_args: >-
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*),mcp__github_inline_comment__create_inline_comment"
+
+      - name: Enforce verdict
+        env:
+          GATES: ${{ steps.gates.outcome }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            if (!fs.existsSync("review-verdict.json")) {
+              console.error("::error title=AI review did not run::No review-verdict.json. The Claude step was skipped or stopped early. " +
+                "If this PR changes .github/workflows/pr-review.yml, claude-code-action skips it on purpose (workflow must match main): " +
+                "a human code owner must review and merge. Otherwise check the Review with Claude step log.");
+              process.exit(1);
+            }
+            const v = JSON.parse(fs.readFileSync("review-verdict.json", "utf8"));
+            console.log(JSON.stringify(v, null, 2));
+            const ok = process.env.GATES === "success" && v.verdict === "APPROVE" && v.blocking === 0;
+            if (!ok) { console.error("Review not passed: " + (v.summary || v.verdict)); process.exit(1); }
+          '
+
+      - name: Label ready for human review
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create ai-approved --color 0E8A16 --description "PR review agent passed; awaiting human approval" --force
+          gh label create ai-changes-requested --color D93F0B --description "PR review agent found blocking issues" --force
+          gh pr edit "$PR_NUMBER" --add-label ai-approved --remove-label ai-changes-requested
+          echo "✅ AI review passed. Waiting for a human reviewer to approve and merge." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Label changes requested
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create ai-approved --color 0E8A16 --description "PR review agent passed; awaiting human approval" --force
+          gh label create ai-changes-requested --color D93F0B --description "PR review agent found blocking issues" --force
+          gh pr edit "$PR_NUMBER" --add-label ai-changes-requested --remove-label ai-approved || true
