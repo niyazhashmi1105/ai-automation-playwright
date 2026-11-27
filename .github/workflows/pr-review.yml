@@ -34,11 +34,11 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       BASE_REF: ${{ github.base_ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -81,7 +81,12 @@ jobs:
         run: |
           node -e '
             const fs = require("fs");
-            if (!fs.existsSync("review-verdict.json")) { console.error("No review-verdict.json written"); process.exit(1); }
+            if (!fs.existsSync("review-verdict.json")) {
+              console.error("::error title=AI review did not run::No review-verdict.json. The Claude step was skipped or stopped early. " +
+                "If this PR changes .github/workflows/pr-review.yml, claude-code-action skips it on purpose (workflow must match main): " +
+                "a human code owner must review and merge. Otherwise check the Review with Claude step log.");
+              process.exit(1);
+            }
             const v = JSON.parse(fs.readFileSync("review-verdict.json", "utf8"));
             console.log(JSON.stringify(v, null, 2));
             const ok = process.env.GATES === "success" && v.verdict === "APPROVE" && v.blocking === 0;

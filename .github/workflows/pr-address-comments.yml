@@ -39,12 +39,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh pr edit "$PR_NUMBER" --remove-label ai-approved --repo "$GITHUB_REPOSITORY" || true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
