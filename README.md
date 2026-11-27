@@ -168,6 +168,22 @@ Agents never approve or merge. Merge needs the `AI review` check **and** a human
    required checks `AI review`, `Static checks`, `API tests`, `Web tests (shard 1/2)`,
    `Web tests (shard 2/2)`.
 
+## CI (Azure Pipelines)
+
+`azure-pipelines.yml` runs the same flow as GitHub Actions: static checks (typecheck, rules,
+coverage, discovery) → API tests + web tests in 2 parallel shards → merged HTML report.
+Step templates live in `.azure/steps/`.
+
+- Triggers: push to `main`, PRs into `main` (`@smoke` only), nightly 02:00 UTC, manual run with
+  `testEnv` (qa/staging) and `grep` (tag filter) parameters.
+- Results: JUnit in the **Tests** tab, `playwright-report-<attempt>` artifact, Markdown summary on
+  the run page.
+- Secrets (optional): pipeline secret variables `WEB_PASSWORD`, `API_TOKEN`. When unset,
+  `config/env` defaults apply (`config/env.ts` ignores unexpanded `$(NAME)` values).
+- Setup: Pipelines → New pipeline → pick the repo (Azure Repos Git or GitHub) → Existing Azure
+  Pipelines YAML file → `/azure-pipelines.yml`. Web shards need 2 parallel jobs; with 1, shards
+  run one after another.
+
 ## CI (GitHub Actions)
 
 Workflow: [.github/workflows/playwright.yml](.github/workflows/playwright.yml)

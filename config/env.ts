@@ -10,11 +10,13 @@ import dotenv from 'dotenv';
  */
 const ROOT = path.resolve(__dirname, '..');
 
-// CI maps missing secrets to empty strings (e.g. WEB_PASSWORD: ${{ secrets.X }}).
-// dotenv never overrides an existing key, so drop empty values first and let
-// .env / config/env defaults fill them.
+// CI maps missing secrets to empty strings (GitHub: WEB_PASSWORD: ${{ secrets.X }}) or, in
+// Azure Pipelines, to the unexpanded macro text "$(WEB_PASSWORD)". dotenv never overrides an
+// existing key, so drop those values first and let .env / config/env defaults fill them.
+const UNSET_CI_VALUE = /^(|\$\([\w.]+\))$/;
 for (const key of ['WEB_BASE_URL', 'API_BASE_URL', 'WEB_USERNAME', 'WEB_PASSWORD', 'API_TOKEN', 'TEST_ENV', 'LOG_LEVEL']) {
-  if (process.env[key] === '') delete process.env[key];
+  const value = process.env[key];
+  if (value !== undefined && UNSET_CI_VALUE.test(value)) delete process.env[key];
 }
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
